@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Fog Game</title>
+<title>Fog Map PRO</title>
 
 <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
 
@@ -27,20 +27,27 @@ transform:translateX(-50%);
 display:flex;
 gap:20px;
 background:rgba(0,0,0,0.7);
-padding:12px 20px;
-border-radius:15px;
+padding:12px 18px;
+border-radius:14px;
 color:white;
 z-index:9999;
 }
 
 #percent{
-font-size:28px;
+font-size:26px;
 font-weight:bold;
 }
 
 #coins{
 color:gold;
 font-weight:bold;
+}
+
+#fog{
+position:absolute;
+inset:0;
+pointer-events:none;
+z-index:500;
 }
 
 #coin{
@@ -61,20 +68,13 @@ animation:coin 1s ease;
 30%{opacity:1;}
 100%{transform:translate(-50%,-120px) scale(1);opacity:0;}
 }
-
-#fogCanvas{
-position:absolute;
-inset:0;
-pointer-events:none;
-z-index:500;
-}
 </style>
 </head>
 
 <body>
 
 <div id="map"></div>
-<canvas id="fogCanvas"></canvas>
+<canvas id="fog"></canvas>
 
 <div id="hud">
 <div id="percent">0%</div>
@@ -87,13 +87,13 @@ z-index:500;
 
 <script>
 
-const map = L.map('map').setView([54.35,18.64],15);
+const map = L.map('map').setView([54.35,18.64],16);
 
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
 attribution:'© OSM'
 }).addTo(map);
 
-const canvas = document.getElementById("fogCanvas");
+const canvas = document.getElementById("fog");
 const ctx = canvas.getContext("2d");
 
 function resize(){
@@ -104,42 +104,37 @@ drawFog();
 window.addEventListener("resize",resize);
 resize();
 
+/* MGŁA */
 function drawFog(){
-ctx.fillStyle="rgba(0,0,0,0.95)";
+ctx.fillStyle="rgba(120,120,120,0.55)";
 ctx.fillRect(0,0,canvas.width,canvas.height);
 }
 
-const discovered = new Set();
-let coins = 0;
+const discovered = JSON.parse(localStorage.getItem("fog")) || {};
+let coins = Number(localStorage.getItem("coins")) || 0;
 
-function reveal(lat,lng,x,y){
-
-const key = `${Math.floor(lat*1000)}_${Math.floor(lng*1000)}`;
-
-let isNew = false;
-
-if(!discovered.has(key)){
-discovered.add(key);
-isNew = true;
+function save(){
+localStorage.setItem("fog",JSON.stringify(discovered));
+localStorage.setItem("coins",coins);
 }
 
-ctx.save();
-ctx.globalCompositeOperation="destination-out";
+/* PROMIEŃ Z ZOOM */
+function getRadius(){
+return 0.0008 * Math.pow(2, map.getZoom()-15);
+}
 
-const g = ctx.createRadialGradient(x,y,20,x,y,120);
-g.addColorStop(0,"rgba(0,0,0,1)");
-g.addColorStop(1,"rgba(0,0,0,0)");
+/* ODKRYWANIE */
+function reveal(lat,lng){
 
-ctx.fillStyle=g;
-ctx.beginPath();
-ctx.arc(x,y,120,0,Math.PI*2);
-ctx.fill();
-ctx.restore();
+const key = Math.floor(lat*2000)+"_"+Math.floor(lng*2000);
 
-if(isNew){
+if(!discovered[key]){
+discovered[key]=true;
 coins++;
 
-document.getElementById("coins").innerText = coins + " 🪙";
+save();
+
+document.getElementById("coins").innerText = coins+" 🪙";
 
 const coin = document.getElementById("coin");
 coin.classList.remove("coinShow");
@@ -148,11 +143,18 @@ coin.classList.add("coinShow");
 }
 }
 
+/* UI */
+function updateUI(){
+const total = Object.keys(discovered).length;
+document.getElementById("percent").innerText =
+Math.min(100,(total/1500)*100).toFixed(1)+"%";
+}
+
 let player;
 
 const icon = L.divIcon({
 className:"",
-html:`<div style="width:20px;height:20px;background:red;border-radius:50%;border:3px solid white;"></div>`
+html:`<div style="width:18px;height:18px;background:red;border-radius:50%;border:3px solid white;"></div>`
 });
 
 navigator.geolocation.watchPosition(pos=>{
@@ -168,12 +170,10 @@ player = L.marker([lat,lng],{icon}).addTo(map);
 player.setLatLng([lat,lng]);
 }
 
-const point = map.latLngToContainerPoint([lat,lng]);
+/* ODKRYCIE NA MAPIE (ŚCIEŻKA, NIE PIXELE) */
+reveal(lat,lng);
 
-reveal(lat,lng,point.x,point.y);
-
-document.getElementById("percent").innerText =
-(Math.min(100,discovered.size/2000*100)).toFixed(1)+"%";
+updateUI();
 
 });
 
